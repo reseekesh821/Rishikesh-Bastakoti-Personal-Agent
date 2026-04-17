@@ -13,6 +13,13 @@ Because this is a static frontend, you can run it directly:
 
 Or use any simple static server.
 
+## Secrets and Git Safety
+
+- Use `.env.example` as a template and create your local `.env`.
+- Keep real keys only in `.env` (never in code).
+- `.gitignore` is configured to ignore `.env` and other secret/key files.
+- `.env.example` is safe to commit and share.
+
 ## Deploy To Vercel
 
 1. Push this repo to GitHub.
@@ -23,16 +30,21 @@ Or use any simple static server.
 6. Output directory: leave empty (root static files).
 7. Click **Deploy**.
 
-`vercel.json` is included for SPA-style rewrites so all routes open `index.html`.
+Then add environment variables in Vercel project settings:
+- `GEMINI_API_KEY`
+- `GROQ_API_KEY`
+- `OPENAI_API_KEY` (optional)
 
 ## Current Scope
 
-- Frontend only
-- No backend or real auth yet
-- No real provider key integration yet
+- Frontend + Vercel serverless API proxy (`/api/chat`)
+- Frontend sign-in is still mock UI only
+- API keys are read from server environment variables
 
 ## Next Planned Phase
 
-- Backend API proxy for Gemini/Groq/OpenAI
-- Secure key handling with environment variables
 - Real authentication and persistent cloud chat history
+
+## Important Security Note
+
+If a real API key was ever pasted into `.env.example` or committed to GitHub, rotate it immediately in the provider dashboard and replace with a new key.

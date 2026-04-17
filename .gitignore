@@ -1,23 +1,26 @@
-# OS files
 .DS_Store
 Thumbs.db
 
-# Logs
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Env
 .env
 .env.*
+!.env.example
 
-# Editor
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+secrets.json
+
 .vscode/
 .idea/
 
-# Build artifacts
 dist/
 build/
 .vercel/

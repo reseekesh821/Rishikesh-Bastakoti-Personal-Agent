@@ -57,13 +57,18 @@ const els = {
 };
 
 function init() {
-  hydrateState();
-  setupProviderOptions();
-  setupEvents();
-  renderAuthUI();
-  ensureActiveChat();
-  renderHistory();
-  renderMessages();
+  try {
+    hydrateState();
+    setupProviderOptions();
+    setupEvents();
+    renderAuthUI();
+    ensureActiveChat();
+    renderHistory();
+    renderMessages();
+  } catch (error) {
+    els.chatMessages.innerHTML = "";
+    pushMessage("assistant", `Startup error: ${error?.message || "Unexpected error"}`);
+  }
 }
 
 function setupProviderOptions() {
@@ -175,7 +180,7 @@ function hydrateState() {
   try {
     const chatsRaw = localStorage.getItem(STORAGE_KEYS.chats);
     const userRaw = localStorage.getItem(STORAGE_KEYS.user);
-    state.chats = chatsRaw ? JSON.parse(chatsRaw) : [];
+    state.chats = normalizeChats(chatsRaw ? JSON.parse(chatsRaw) : []);
     state.user = userRaw ? JSON.parse(userRaw) : null;
   } catch {
     state.chats = [];
@@ -189,11 +194,15 @@ function ensureActiveChat() {
     return;
   }
   state.activeChatId = state.chats[0].id;
+  const activeChat = getActiveChat();
+  if (!activeChat || !Array.isArray(activeChat.messages) || activeChat.messages.length === 0) {
+    createNewChat();
+  }
 }
 
 function createNewChat() {
   const newChat = {
-    id: crypto.randomUUID(),
+    id: createId(),
     title: "New chat",
     createdAt: Date.now(),
     messages: [
@@ -213,6 +222,29 @@ function createNewChat() {
 
 function getActiveChat() {
   return state.chats.find((chat) => chat.id === state.activeChatId);
+}
+
+function normalizeChats(input) {
+  if (!Array.isArray(input)) return [];
+  return input
+    .filter((chat) => chat && typeof chat.id === "string")
+    .map((chat) => ({
+      id: chat.id,
+      title: typeof chat.title === "string" ? chat.title : "New chat",
+      createdAt: Number(chat.createdAt) || Date.now(),
+      messages: Array.isArray(chat.messages)
+        ? chat.messages.filter(
+            (msg) => msg && typeof msg.role === "string" && typeof msg.content === "string"
+          )
+        : [],
+    }));
+}
+
+function createId() {
+  if (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return `chat-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function touchActiveChatTitle(firstUserMessage) {
@@ -324,25 +356,47 @@ function escapeHtml(value) {
 }
 
 async function requestAssistantResponse(payload) {
-  // Frontend-only placeholder adapter.
-  // Later you can replace this with a backend call:
-  // return fetch("/api/chat", { method: "POST", body: JSON.stringify(payload) })
-  // and handle provider keys server-side for security.
-  await wait(700);
-  const provider = PROVIDERS[payload.providerKey];
-  const lastUserText = payload.messages[payload.messages.length - 1]?.content || "";
+  if (window.location.protocol === "file:") {
+    return buildLocalMockReply(payload);
+  }
 
+  let response;
+  try {
+    response = await fetch("/api/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    return buildLocalMockReply(payload);
+  }
+
+  let data = {};
+  try {
+    data = await response.json();
+  } catch {
+    data = {};
+  }
+
+  if (!response.ok) {
+    throw new Error(data?.error || `API request failed with status ${response.status}`);
+  }
+
+  return data?.text || "No response returned.";
+}
+
+function buildLocalMockReply(payload) {
+  const provider = PROVIDERS[payload.providerKey]?.label || payload.providerKey;
+  const lastUserText = payload.messages[payload.messages.length - 1]?.content || "";
   return [
-    `Mock response from ${provider.label} (${payload.model})`,
+    `Local mode reply (${provider} / ${payload.model})`,
     "",
     `You said: "${lastUserText}"`,
     "",
-    "Frontend is ready with history and auth UI. Next step: connect secure APIs.",
+    "Local UI is working. For real AI replies, run from deployed app or API server.",
   ].join("\n");
-}
-
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 init();
