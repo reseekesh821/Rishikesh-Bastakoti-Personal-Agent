@@ -73,21 +73,23 @@
 
     <div id="authModal" class="modal hidden" role="dialog" aria-modal="true">
       <div class="modal-card">
-        <h2>Sign in</h2>
-        <p class="muted">Frontend demo auth. No backend yet.</p>
+        <h2 id="authTitle">Sign in</h2>
+        <p id="authSubtitle" class="muted">Use your account to sync data across devices.</p>
         <form id="signInForm" class="auth-form">
-          <label for="nameInput">Name</label>
-          <input id="nameInput" type="text" required placeholder="Your name" />
           <label for="emailInput">Email</label>
           <input id="emailInput" type="email" required placeholder="you@example.com" />
+          <label for="passwordInput">Password</label>
+          <input id="passwordInput" type="password" required placeholder="Enter password" />
           <div class="modal-actions">
+            <button type="button" id="toggleAuthModeBtn" class="btn ghost">Create account</button>
             <button type="button" id="cancelSignInBtn" class="btn ghost">Cancel</button>
-            <button type="submit" class="btn primary">Continue</button>
+            <button id="authSubmitBtn" type="submit" class="btn primary">Sign in</button>
           </div>
         </form>
       </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="./script.js"></script>
   </body>
 </html>

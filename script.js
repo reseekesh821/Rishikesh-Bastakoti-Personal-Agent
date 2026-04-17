@@ -13,7 +13,6 @@ const PROVIDERS = {
 
 const STORAGE_KEYS = {
   chats: "rishikesh-bastakoti-personal-agent-chats-v1",
-  user: "rishikesh-bastakoti-personal-agent-user-v1",
 };
 
 const state = {
@@ -22,7 +21,13 @@ const state = {
   chats: [],
   activeChatId: null,
   user: null,
+  accessToken: null,
   busy: false,
+  tasks: [],
+  memory: {},
+  cloudSyncTimer: null,
+  authMode: "signin",
+  authClient: null,
 };
 
 const els = {
@@ -47,17 +52,22 @@ const els = {
   authModal: document.getElementById("authModal"),
   signInForm: document.getElementById("signInForm"),
   cancelSignInBtn: document.getElementById("cancelSignInBtn"),
-  nameInput: document.getElementById("nameInput"),
   emailInput: document.getElementById("emailInput"),
+  passwordInput: document.getElementById("passwordInput"),
+  authTitle: document.getElementById("authTitle"),
+  authSubtitle: document.getElementById("authSubtitle"),
+  authSubmitBtn: document.getElementById("authSubmitBtn"),
+  toggleAuthModeBtn: document.getElementById("toggleAuthModeBtn"),
 };
 
-function init() {
+async function init() {
   try {
     hydrateState();
     setupProviderOptions();
     setupEvents();
-    renderAuthUI();
+    await initAuth();
     ensureActiveChat();
+    renderAuthUI();
     renderHistory();
     renderMessages();
   } catch (error) {
@@ -108,15 +118,17 @@ function setupEvents() {
 
   els.chatForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-
     if (state.busy) return;
 
     const content = els.messageInput.value.trim();
     if (!content) return;
 
+    const activeChat = getActiveChat();
+    if (!activeChat) return;
+
     els.messageInput.value = "";
     pushMessage("user", content);
-    getActiveChat().messages.push({ role: "user", content });
+    activeChat.messages.push({ role: "user", content });
     touchActiveChatTitle(content);
     persistChats();
     renderHistory();
@@ -128,16 +140,15 @@ function setupEvents() {
         model: state.model,
         systemPrompt: els.systemPrompt.value.trim(),
         temperature: Number(els.temperature.value),
-        messages: getActiveChat().messages,
+        messages: activeChat.messages,
       });
-
       pushMessage("assistant", reply);
-      getActiveChat().messages.push({ role: "assistant", content: reply });
+      activeChat.messages.push({ role: "assistant", content: reply });
       persistChats();
     } catch (error) {
       pushMessage(
         "assistant",
-        `Error: ${error.message || "Something went wrong while generating response."}`
+        `Error: ${error?.message || "Something went wrong while generating response."}`
       );
     } finally {
       setBusy(false);
@@ -154,32 +165,30 @@ function setupEvents() {
 
   els.signInBtn.addEventListener("click", openSignInModal);
   els.cancelSignInBtn.addEventListener("click", closeSignInModal);
-  els.signOutBtn.addEventListener("click", signOut);
+  els.signOutBtn.addEventListener("click", async () => {
+    await signOut();
+  });
 
-  els.signInForm.addEventListener("submit", (event) => {
+  els.toggleAuthModeBtn.addEventListener("click", () => {
+    toggleAuthMode();
+  });
+
+  els.signInForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    signIn({
-      name: els.nameInput.value.trim(),
-      email: els.emailInput.value.trim(),
-    });
+    await submitAuthForm();
   });
 
   els.authModal.addEventListener("click", (event) => {
-    if (event.target === els.authModal) {
-      closeSignInModal();
-    }
+    if (event.target === els.authModal) closeSignInModal();
   });
 }
 
 function hydrateState() {
   try {
     const chatsRaw = localStorage.getItem(STORAGE_KEYS.chats);
-    const userRaw = localStorage.getItem(STORAGE_KEYS.user);
     state.chats = normalizeChats(chatsRaw ? JSON.parse(chatsRaw) : []);
-    state.user = userRaw ? JSON.parse(userRaw) : null;
   } catch {
     state.chats = [];
-    state.user = null;
   }
 }
 
@@ -252,6 +261,7 @@ function touchActiveChatTitle(firstUserMessage) {
 
 function persistChats() {
   localStorage.setItem(STORAGE_KEYS.chats, JSON.stringify(state.chats));
+  queueCloudSync();
 }
 
 function renderHistory() {
@@ -301,6 +311,7 @@ function renderAuthUI() {
 }
 
 function openSignInModal() {
+  renderAuthMode();
   els.authModal.classList.remove("hidden");
 }
 
@@ -309,17 +320,67 @@ function closeSignInModal() {
   els.signInForm.reset();
 }
 
-function signIn(user) {
-  if (!user.name || !user.email) return;
-  state.user = user;
-  localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(user));
-  renderAuthUI();
-  closeSignInModal();
+function toggleAuthMode() {
+  state.authMode = state.authMode === "signin" ? "signup" : "signin";
+  renderAuthMode();
 }
 
-function signOut() {
+function renderAuthMode() {
+  if (state.authMode === "signin") {
+    els.authTitle.textContent = "Sign in";
+    els.authSubtitle.textContent = "Use your account to sync data across devices.";
+    els.authSubmitBtn.textContent = "Sign in";
+    els.toggleAuthModeBtn.textContent = "Create account";
+  } else {
+    els.authTitle.textContent = "Create account";
+    els.authSubtitle.textContent = "Create an account with email and password.";
+    els.authSubmitBtn.textContent = "Create";
+    els.toggleAuthModeBtn.textContent = "Back to sign in";
+  }
+}
+
+async function submitAuthForm() {
+  if (!state.authClient) {
+    pushMessage("assistant", "Auth is not configured. Check Supabase env values in Vercel.");
+    return;
+  }
+
+  const email = els.emailInput.value.trim().toLowerCase();
+  const password = els.passwordInput.value;
+  if (!email || !password) return;
+
+  let result;
+  if (state.authMode === "signin") {
+    result = await state.authClient.auth.signInWithPassword({ email, password });
+  } else {
+    result = await state.authClient.auth.signUp({ email, password });
+  }
+
+  if (result.error) {
+    pushMessage("assistant", `Auth error: ${result.error.message}`);
+    return;
+  }
+
+  if (state.authMode === "signup" && !result.data?.session) {
+    pushMessage("assistant", "Account created. Verify email if prompted, then sign in.");
+    state.authMode = "signin";
+    renderAuthMode();
+    return;
+  }
+
+  await applySession(result.data?.session || null);
+  renderAuthUI();
+  closeSignInModal();
+  renderHistory();
+  renderMessages();
+}
+
+async function signOut() {
+  if (state.authClient) {
+    await state.authClient.auth.signOut();
+  }
   state.user = null;
-  localStorage.removeItem(STORAGE_KEYS.user);
+  state.accessToken = null;
   renderAuthUI();
 }
 
@@ -361,6 +422,7 @@ async function requestAssistantResponse(payload) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...(state.accessToken ? { Authorization: `Bearer ${state.accessToken}` } : {}),
       },
       body: JSON.stringify(payload),
     });
@@ -392,6 +454,95 @@ function buildLocalMockReply(payload) {
     "",
     "Local UI is working. For real AI replies, run from deployed app or API server.",
   ].join("\n");
+}
+
+async function initAuth() {
+  const response = await fetch("/api/public-config");
+  if (!response.ok) return;
+  const config = await response.json();
+  if (!config?.supabaseUrl || !config?.supabaseAnonKey || !window.supabase?.createClient) return;
+
+  state.authClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+
+  const sessionData = await state.authClient.auth.getSession();
+  await applySession(sessionData?.data?.session || null);
+
+  state.authClient.auth.onAuthStateChange(async (_event, session) => {
+    await applySession(session || null);
+    renderAuthUI();
+    renderHistory();
+    renderMessages();
+  });
+}
+
+async function applySession(session) {
+  if (!session?.user?.email) {
+    state.user = null;
+    state.accessToken = null;
+    return;
+  }
+
+  const email = session.user.email.toLowerCase();
+  const name = (session.user.user_metadata?.full_name || email.split("@")[0]).trim();
+  state.user = { email, name };
+  state.accessToken = session.access_token || null;
+  await loadCloudState();
+}
+
+async function loadCloudState() {
+  if (!state.user?.email || !state.accessToken) return;
+  try {
+    const response = await fetch("/api/state", {
+      headers: {
+        Authorization: `Bearer ${state.accessToken}`,
+      },
+    });
+    if (!response.ok) return;
+
+    const data = await response.json();
+    const remote = data?.state?.state_json;
+    if (!remote || typeof remote !== "object") return;
+
+    const remoteChats = normalizeChats(remote.chats);
+    if (remoteChats.length) {
+      state.chats = remoteChats;
+      state.activeChatId = remoteChats[0].id;
+      localStorage.setItem(STORAGE_KEYS.chats, JSON.stringify(state.chats));
+    }
+    state.tasks = Array.isArray(remote.tasks) ? remote.tasks : [];
+    state.memory = remote.memory && typeof remote.memory === "object" ? remote.memory : {};
+  } catch {
+    return;
+  }
+}
+
+function queueCloudSync() {
+  if (!state.user?.email || !state.accessToken) return;
+  if (state.cloudSyncTimer) clearTimeout(state.cloudSyncTimer);
+  state.cloudSyncTimer = setTimeout(() => {
+    syncCloudState();
+  }, 500);
+}
+
+async function syncCloudState() {
+  if (!state.user?.email || !state.accessToken) return;
+  try {
+    await fetch("/api/state", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${state.accessToken}`,
+      },
+      body: JSON.stringify({
+        name: state.user.name,
+        chats: state.chats,
+        tasks: state.tasks,
+        memory: state.memory,
+      }),
+    });
+  } catch {
+    return;
+  }
 }
 
 init();

@@ -33,6 +33,9 @@ Or use any simple static server.
 Then add environment variables in Vercel project settings:
 - `GEMINI_API_KEY`
 - `GROQ_API_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
 
 ## Current Scope
 
@@ -40,6 +43,7 @@ Then add environment variables in Vercel project settings:
 - Frontend sign-in is still mock UI only
 - API keys are read from server environment variables
 - Personal-agent backend context with basic intent routing (`career`, `study`, `task`, `portfolio`, `general`)
+- Supabase-backed persistent state API (`/api/state`) for chats/profile data
 
 ## Next Planned Phase
 
@@ -47,11 +51,20 @@ Then add environment variables in Vercel project settings:
 
 ## Resources Needed From You (For Next Upgrade)
 
-- Supabase project URL
-- Supabase anon key
-- Supabase service role key (server use only)
 - Preferred auth provider choice (Clerk, Supabase Auth, or Firebase)
 - Calendar integration choice (Google Calendar or none for now)
+
+## Supabase Setup
+
+1. Open Supabase SQL Editor.
+2. Run `supabase/schema.sql`.
+3. Redeploy on Vercel after environment variables are set.
+
+## Supabase Auth Setup
+
+1. Open Supabase `Authentication -> Providers -> Email`.
+2. Enable Email provider.
+3. If using email confirmation, verify once before first sign in.
 
 ## Important Security Note
 
