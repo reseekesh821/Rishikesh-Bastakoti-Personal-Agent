@@ -125,8 +125,9 @@ async function callOpenAI({ payload, model, apiKey }) {
 }
 
 async function callGemini({ payload, model, apiKey }) {
+  const resolvedModel = await resolveGeminiModel({ apiKey, requestedModel: model });
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: {
@@ -163,4 +164,37 @@ async function callGemini({ payload, model, apiKey }) {
       .join("\n")
       .trim() || "";
   return text || "No response from Gemini.";
+}
+
+async function resolveGeminiModel({ apiKey, requestedModel }) {
+  const normalizedRequested = requestedModel.replace(/^models\//, "");
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
+  );
+
+  if (!response.ok) {
+    return normalizedRequested;
+  }
+
+  const data = await response.json();
+  const modelNames = (data?.models || [])
+    .filter(
+      (item) =>
+        item &&
+        typeof item.name === "string" &&
+        Array.isArray(item.supportedGenerationMethods) &&
+        item.supportedGenerationMethods.includes("generateContent")
+    )
+    .map((item) => item.name.replace(/^models\//, ""));
+
+  if (!modelNames.length) {
+    return normalizedRequested;
+  }
+
+  if (modelNames.includes(normalizedRequested)) {
+    return normalizedRequested;
+  }
+
+  const preferred = modelNames.find((name) => name.includes("flash"));
+  return preferred || modelNames[0];
 }

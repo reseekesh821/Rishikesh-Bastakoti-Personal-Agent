@@ -1,7 +1,7 @@
 const PROVIDERS = {
   gemini: {
     label: "Gemini",
-    models: ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"],
+    models: ["gemini-1.5-flash-latest", "gemini-1.5-pro-latest", "gemini-2.0-flash"],
     endpoint: "https://generativelanguage.googleapis.com/v1beta/models",
   },
   groq: {
@@ -23,7 +23,7 @@ const STORAGE_KEYS = {
 
 const state = {
   providerKey: "gemini",
-  model: "gemini-1.5-flash",
+  model: "gemini-1.5-flash-latest",
   chats: [],
   activeChatId: null,
   user: null,
