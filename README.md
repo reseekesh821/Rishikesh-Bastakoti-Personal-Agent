@@ -4,7 +4,7 @@ Frontend-only personal AI assistant UI with:
 - ChatGPT-style layout
 - Chat history sidebar
 - Sign-in UI (frontend mock)
-- Provider/model selector (Gemini, Groq, OpenAI placeholders)
+- Provider/model selector (Gemini and Groq)
 
 ## Local Run
 
@@ -33,17 +33,25 @@ Or use any simple static server.
 Then add environment variables in Vercel project settings:
 - `GEMINI_API_KEY`
 - `GROQ_API_KEY`
-- `OPENAI_API_KEY` (optional)
 
 ## Current Scope
 
 - Frontend + Vercel serverless API proxy (`/api/chat`)
 - Frontend sign-in is still mock UI only
 - API keys are read from server environment variables
+- Personal-agent backend context with basic intent routing (`career`, `study`, `task`, `portfolio`, `general`)
 
 ## Next Planned Phase
 
 - Real authentication and persistent cloud chat history
+
+## Resources Needed From You (For Next Upgrade)
+
+- Supabase project URL
+- Supabase anon key
+- Supabase service role key (server use only)
+- Preferred auth provider choice (Clerk, Supabase Auth, or Firebase)
+- Calendar integration choice (Google Calendar or none for now)
 
 ## Important Security Note
 

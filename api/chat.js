@@ -1,7 +1,20 @@
 const PROVIDER_KEYS = {
   gemini: "GEMINI_API_KEY",
   groq: "GROQ_API_KEY",
-  openai: "OPENAI_API_KEY",
+};
+
+const PERSONAL_CONTEXT = {
+  name: "Rishikesh Bastakoti",
+  role: "Computer Science student and aspiring software developer",
+  location: "Nepal origin, currently in the United States",
+  education: "Caldwell University, undergraduate CS student",
+  focusAreas: ["internships", "project building", "full-stack growth", "academic planning"],
+  assistantBehavior: [
+    "Act as a practical personal agent for Rishikesh.",
+    "Prioritize clear action steps and realistic timelines.",
+    "Prefer concise outputs unless detail is requested.",
+    "When uncertain, ask one focused clarification question.",
+  ],
 };
 
 export default async function handler(req, res) {
@@ -15,6 +28,12 @@ export default async function handler(req, res) {
 
     const providerKey = payload.providerKey;
     const model = payload.model;
+    const intent = detectIntent(payload.messages);
+    const composedSystemPrompt = buildSystemPrompt({
+      userSystemPrompt: payload.systemPrompt,
+      intent,
+    });
+
     const apiKeyEnv = PROVIDER_KEYS[providerKey];
     const apiKey = process.env[apiKeyEnv];
 
@@ -26,21 +45,91 @@ export default async function handler(req, res) {
 
     let text = "";
     if (providerKey === "gemini") {
-      text = await callGemini({ payload, model, apiKey });
+      text = await callGemini({
+        payload: { ...payload, systemPrompt: composedSystemPrompt },
+        model,
+        apiKey,
+      });
     } else if (providerKey === "groq") {
-      text = await callGroq({ payload, model, apiKey });
-    } else if (providerKey === "openai") {
-      text = await callOpenAI({ payload, model, apiKey });
+      text = await callGroq({
+        payload: { ...payload, systemPrompt: composedSystemPrompt },
+        model,
+        apiKey,
+      });
     } else {
       return res.status(400).json({ error: "Unsupported provider" });
     }
 
-    return res.status(200).json({ text });
+    return res.status(200).json({ text, intent });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected server error";
     const status = message.startsWith("Invalid payload") ? 400 : 500;
     return res.status(status).json({ error: message });
   }
+}
+
+function detectIntent(messages) {
+  const lastUserMessage =
+    [...messages].reverse().find((msg) => msg?.role === "user" && typeof msg.content === "string")
+      ?.content || "";
+  const text = lastUserMessage.toLowerCase();
+
+  if (
+    text.includes("internship") ||
+    text.includes("resume") ||
+    text.includes("cv") ||
+    text.includes("job") ||
+    text.includes("linkedin")
+  ) {
+    return "career";
+  }
+
+  if (
+    text.includes("assignment") ||
+    text.includes("exam") ||
+    text.includes("study") ||
+    text.includes("class") ||
+    text.includes("homework")
+  ) {
+    return "study";
+  }
+
+  if (
+    text.includes("todo") ||
+    text.includes("task") ||
+    text.includes("plan") ||
+    text.includes("schedule") ||
+    text.includes("remind")
+  ) {
+    return "task";
+  }
+
+  if (
+    text.includes("portfolio") ||
+    text.includes("website") ||
+    text.includes("project") ||
+    text.includes("github")
+  ) {
+    return "portfolio";
+  }
+
+  return "general";
+}
+
+function buildSystemPrompt({ userSystemPrompt, intent }) {
+  const base = [
+    `You are ${PERSONAL_CONTEXT.name}'s personal AI agent.`,
+    `Profile: ${PERSONAL_CONTEXT.role}.`,
+    `Background: ${PERSONAL_CONTEXT.education}; ${PERSONAL_CONTEXT.location}.`,
+    `Current focus: ${PERSONAL_CONTEXT.focusAreas.join(", ")}.`,
+    `Detected intent: ${intent}.`,
+    ...PERSONAL_CONTEXT.assistantBehavior,
+  ].join("\n");
+
+  if (userSystemPrompt && typeof userSystemPrompt === "string") {
+    return `${base}\n\nExtra instruction from user:\n${userSystemPrompt}`;
+  }
+  return base;
 }
 
 function parseBody(body) {
@@ -99,29 +188,6 @@ async function callGroq({ payload, model, apiKey }) {
 
   const data = await response.json();
   return data?.choices?.[0]?.message?.content?.trim() || "No response from Groq.";
-}
-
-async function callOpenAI({ payload, model, apiKey }) {
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      temperature: Number(payload.temperature ?? 0.7),
-      messages: toOpenAIMessages(payload),
-    }),
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`OpenAI request failed (${response.status}): ${errText}`);
-  }
-
-  const data = await response.json();
-  return data?.choices?.[0]?.message?.content?.trim() || "No response from OpenAI.";
 }
 
 async function callGemini({ payload, model, apiKey }) {

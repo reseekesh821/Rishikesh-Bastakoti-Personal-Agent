@@ -9,11 +9,6 @@ const PROVIDERS = {
     models: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
     endpoint: "https://api.groq.com/openai/v1/chat/completions",
   },
-  openai: {
-    label: "OpenAI",
-    models: ["gpt-4o-mini", "gpt-4.1-mini", "gpt-4o"],
-    endpoint: "https://api.openai.com/v1/chat/completions",
-  },
 };
 
 const STORAGE_KEYS = {
